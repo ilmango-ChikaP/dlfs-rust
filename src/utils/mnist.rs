@@ -1,6 +1,6 @@
 use std::path::Path;
 use std::fs::{self, File};
-use std::io::Read;
+use std::io::{BufReader, Read};
 use na::DMatrix;
 use anyhow::{Result, Context};
 use futures;
@@ -65,29 +65,29 @@ async fn download_dataset() -> Result<()> {
     let test_data_response = reqwest::get(format!("{}{}", URL, TEST_DATA));
     let test_label_response = reqwest::get(format!("{}{}", URL, TEST_LABEL));
 
-    let (train_data_body, train_label_body, test_data_body, test_label_body) = futures::join!(
+    let (train_data_body, train_label_body, test_data_body, test_label_body) = futures::try_join!(
         train_data_response,
         train_label_response,
         test_data_response,
         test_label_response,
-    );
+    )?;
 
-    let (train_data_bytes, train_label_bytes, test_data_bytes, test_label_bytes) = futures::join!(
-        train_data_body?.bytes(),
-        train_label_body?.bytes(),
-        test_data_body?.bytes(),
-        test_label_body?.bytes(),
-    );
+    let (train_data_bytes, train_label_bytes, test_data_bytes, test_label_bytes) = futures::try_join!(
+        train_data_body.bytes(),
+        train_label_body.bytes(),
+        test_data_body.bytes(),
+        test_label_body.bytes(),
+    )?;
 
     let mut train_data_file = File::create(format!("{}{}", DATA_PATH, TRAINING_DATA))?;
     let mut train_label_file = File::create(format!("{}{}", DATA_PATH, TRAINING_LABEL))?;
     let mut test_data_file = File::create(format!("{}{}", DATA_PATH, TEST_DATA))?;
     let mut test_label_file = File::create(format!("{}{}", DATA_PATH, TEST_LABEL))?;
 
-    std::io::copy(&mut train_data_bytes?.as_ref(), &mut train_data_file)?;
-    std::io::copy(&mut train_label_bytes?.as_ref(), &mut train_label_file)?;
-    std::io::copy(&mut test_data_bytes?.as_ref(), &mut test_data_file)?;
-    std::io::copy(&mut test_label_bytes?.as_ref(), &mut test_label_file)?;
+    std::io::copy(&mut train_data_bytes.as_ref(), &mut train_data_file)?;
+    std::io::copy(&mut train_label_bytes.as_ref(), &mut train_label_file)?;
+    std::io::copy(&mut test_data_bytes.as_ref(), &mut test_data_file)?;
+    std::io::copy(&mut test_label_bytes.as_ref(), &mut test_label_file)?;
 
     Ok(())
 }
@@ -96,7 +96,7 @@ fn load_train_image<T>() -> Result<DMatrix<T>>
 where
     T: num::Float + num::FromPrimitive + na::Scalar,
 {
-    let mut gz = GzDecoder::new(File::open(format!("{}{}", DATA_PATH, TRAINING_DATA))?);
+    let mut gz = GzDecoder::new(BufReader::new(File::open(format!("{}{}", DATA_PATH, TRAINING_DATA))?));
     let mut data: Vec<u8> = Vec::with_capacity(47040016);
     gz.read_to_end(&mut data)?;
     Ok(DMatrix::from_row_slice(60000, 784, &data[16..]).map(|p| T::from_u8(p).unwrap()))
@@ -106,7 +106,7 @@ fn load_train_label<T>() -> Result<DMatrix<T>>
 where
     T: num::Float + num::FromPrimitive + na::Scalar,
 {
-    let mut gz = GzDecoder::new(File::open(format!("{}{}", DATA_PATH, TRAINING_LABEL))?);
+    let mut gz = GzDecoder::new(BufReader::new(File::open(format!("{}{}", DATA_PATH, TRAINING_LABEL))?));
     let mut data: Vec<u8> = Vec::with_capacity(60008);
     let mut onehot_data = Vec::with_capacity(600000);
     gz.read_to_end(&mut data)?;
@@ -122,7 +122,7 @@ fn load_test_image<T>() -> Result<DMatrix<T>>
 where
     T: num::Float + num::FromPrimitive + na::Scalar,
 {
-    let mut gz = GzDecoder::new(File::open(format!("{}{}", DATA_PATH, TEST_DATA))?);
+    let mut gz = GzDecoder::new(BufReader::new(File::open(format!("{}{}", DATA_PATH, TEST_DATA))?));
     let mut data: Vec<u8> = Vec::with_capacity(7840016);
     gz.read_to_end(&mut data)?;
     Ok(DMatrix::from_row_slice(10000, 784, &data[16..]).map(|p| T::from_u8(p).unwrap()))
@@ -132,7 +132,7 @@ fn load_test_label<T>() -> Result<DMatrix<T>>
 where
     T: num::Float + num::FromPrimitive + na::Scalar,
 {
-    let mut gz = GzDecoder::new(File::open(format!("{}{}", DATA_PATH, TEST_LABEL))?);
+    let mut gz = GzDecoder::new(BufReader::new(File::open(format!("{}{}", DATA_PATH, TEST_LABEL))?));
     let mut data: Vec<u8> = Vec::with_capacity(10008);
     let mut onehot_data = Vec::with_capacity(100000);
     gz.read_to_end(&mut data)?;
